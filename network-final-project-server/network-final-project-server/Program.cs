@@ -6,20 +6,19 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
+using MySql.Data.MySqlClient;
 
 namespace network_final_project_server
 {
     class Program
     {
         static Socket mainSock; // 서버 소켓
-        static Dictionary<string, string> userInfo;
         static Dictionary<string, Socket> connectedClients; // 클라이언트 소켓저장
         public static void StartListening()
         {
             IPEndPoint endPoint = new IPEndPoint(IPAddress.Parse("192.168.1.186"), 9000);
             mainSock = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             connectedClients = new Dictionary<string, Socket>();
-            userInfo = new Dictionary<string, string>();
 
             try
             {
@@ -30,6 +29,7 @@ namespace network_final_project_server
                 while (true)
                 {
                     mainSock.BeginAccept(AcceptCallback, null);
+                    Thread.Sleep(10);
                 }
             }
             catch (Exception e)
@@ -43,7 +43,6 @@ namespace network_final_project_server
 
         public static void AcceptCallback(IAsyncResult ar)
         {
-            Console.WriteLine("Accept");
             Socket client = mainSock.EndAccept(ar);
             mainSock.BeginAccept(AcceptCallback, null);
 
@@ -54,7 +53,6 @@ namespace network_final_project_server
 
         public static void DataReceived(IAsyncResult ar)
         {
-            Console.WriteLine("Receive");
             AsyncObject obj = (AsyncObject)ar.AsyncState;
 
             try
@@ -70,7 +68,124 @@ namespace network_final_project_server
 
                 string data = Encoding.UTF8.GetString(obj.Buffer).Trim('\0');
 
-                auth(data, obj);
+                var Response = new JObject(); // 반환할 데이터를 담을 객체
+                var readJson = JObject.Parse(data); // 받은 json 데이터 파싱
+                string req = readJson["req"].ToString();
+                Console.WriteLine(string.Format("{0} : {1}", DateTime.Now, readJson));
+                string connStr = string.Format(@"server=localhost;
+                                              user=root;
+                                              password=1234;
+                                              database=network");
+                switch (req)
+                {
+                    case "login":
+                        using (MySqlConnection conn = new MySqlConnection(connStr))
+                        {
+                            conn.Open();
+                            string sql = "SELECT * FROM user WHERE id = '" + readJson["id"].ToString() + "'";
+                            MySqlCommand cmd = new MySqlCommand(sql, conn);
+                            MySqlDataReader rdr = cmd.ExecuteReader();
+
+                            if (rdr.Read())
+                            { // 아이디 존재 여부 체크
+                                if (rdr["pw"].ToString() == readJson["pw"].ToString())
+                                { // 아이디와 비밀번호가 맞는지 체크
+                                    connectedClients.Add(readJson["id"].ToString(), obj.WorkingSocket);   // 로그인 성공한 유저의 아이디와 소켓을 딕셔너리에 저장
+                                    Response.Add("res", "true");
+                                }
+                                else
+                                {
+                                    Response.Add("res", "false");
+                                    Response.Add("result", "비밀번호가 틀렸습니다.");
+                                }
+                            }
+                            else
+                            {
+                                Response.Add("res", "false");
+                                Response.Add("result", "존재하지 않는 아이디 입니다.");
+                            }
+                        }
+                        break;
+
+                    case "register":
+                        using (MySqlConnection conn = new MySqlConnection(connStr))
+                        {
+                            conn.Open();
+                            string sql = "SELECT * FROM user WHERE id = '" + readJson["id"].ToString() + "'";
+                            MySqlCommand cmd = new MySqlCommand(sql, conn);
+                            MySqlDataReader rdr = cmd.ExecuteReader();
+
+                            if (!rdr.Read())
+                            {  // 아이디 중복체크
+                                rdr.Close();
+                                cmd = new MySqlCommand("INSERT INTO user (id,pw) VALUES ('" + readJson["id"].ToString() + "','" + readJson["pw"].ToString() + "' )", conn);
+                                cmd.ExecuteNonQuery();
+                                Response.Add("res", "true");
+                            }
+                            else
+                            {
+                                Response.Add("res", "false");
+                                Response.Add("result", "존재하는 아이디 입니다.");
+                            }
+                        }
+                        break;
+
+                    case "logout":
+                        connectedClients.Remove(readJson["id"].ToString());
+                        break;
+                    case "list":
+                        var onlineList = new JArray();
+                        foreach (var client in connectedClients.Keys)
+                        {
+                            onlineList.Add(client);
+                        }
+                        Response.Add("result", onlineList);
+                        break;
+                }
+                byte[] responseData = Encoding.UTF8.GetBytes(Response.ToString());
+                if (req == "logout")
+                {
+                    foreach (var client in connectedClients)
+                    {
+                        Console.WriteLine("연결된 클라이언트: " + client.Key);
+                    }
+                }
+                else if (req == "list")
+                {
+                    foreach (KeyValuePair<string, Socket> clients in connectedClients)
+                    {
+                        Socket socket = clients.Value;
+
+                        try
+                        {
+                            //Console.WriteLine(clients.Key);
+                            socket.Send(responseData);
+                            Console.WriteLine(string.Format("{0} : {1}", DateTime.Now, Response));
+                        }
+                        catch
+                        {
+                            try
+                            {
+                                Console.WriteLine("sibal");
+                                socket.Dispose();
+                            }
+                            catch { }
+                        }
+
+                    }
+                    //Response.Add("result", onlineList);
+                    //obj.WorkingSocket.Send(responseData);
+                    //obj.ClearBuffer();
+                    //obj.WorkingSocket.BeginReceive(obj.Buffer, 0, 4096, 0, DataReceived, obj);
+                }
+                else
+                {
+                    Console.WriteLine(string.Format("{0} : {1}", DateTime.Now, Response));
+                    obj.WorkingSocket.Send(responseData);
+                    obj.ClearBuffer();
+                    obj.WorkingSocket.BeginReceive(obj.Buffer, 0, 4096, 0, DataReceived, obj);
+                }
+                //auth(data, obj);
 
                 //for (int i = connectedClients.Count - 1; i >= 0; i--)
                 //{
@@ -98,54 +213,54 @@ namespace network_final_project_server
             }
         }
 
-        public static void auth(string data, AsyncObject obj)
-        {
-            Console.WriteLine("auth");
-            var Response = new JObject(); // 반환할 데이터를 담을 객체
-            var readJson = JObject.Parse(data); // 받은 json 데이터 파싱
-            string req = readJson["req"].ToString();
-            Console.WriteLine(string.Format("{0} : {1}", DateTime.Now, readJson));
-            switch (req)
-            {
-                case "login":
-                    if (userInfo.ContainsKey(readJson["id"].ToString())) { // 아이디 존재 여부 체크
-                        if(userInfo[readJson["id"].ToString()] == readJson["pw"].ToString()) { // 아이디와 비밀번호가 맞는지 체크
-                            connectedClients.Add(readJson["id"].ToString(), obj.WorkingSocket);   // 로그인 성공한 유저의 아이디와 소켓을 딕셔너리에 저장
-                            Response.Add("res", "true");
-                        } else {
-                            Response.Add("res", "false");
-                            Response.Add("result", "비밀번호가 틀렸습니다.");
-                        }
-                    }
-                    else {
-                        Response.Add("res", "false");
-                        Response.Add("result", "존재하지 않는 아이디 입니다.");
-                    }
-                    break;
+        //public static void auth(string data, AsyncObject obj)
+        //{
+        //    Console.WriteLine("auth");
+        //    var Response = new JObject(); // 반환할 데이터를 담을 객체
+        //    var readJson = JObject.Parse(data); // 받은 json 데이터 파싱
+        //    string req = readJson["req"].ToString();
+        //    Console.WriteLine(string.Format("{0} : {1}", DateTime.Now, readJson));
+        //    switch (req)
+        //    {
+        //        case "login":
+        //            if (userInfo.ContainsKey(readJson["id"].ToString())) { // 아이디 존재 여부 체크
+        //                if(userInfo[readJson["id"].ToString()] == readJson["pw"].ToString()) { // 아이디와 비밀번호가 맞는지 체크
+        //                    connectedClients.Add(readJson["id"].ToString(), obj.WorkingSocket);   // 로그인 성공한 유저의 아이디와 소켓을 딕셔너리에 저장
+        //                    Response.Add("res", "true");
+        //                } else {
+        //                    Response.Add("res", "false");
+        //                    Response.Add("result", "비밀번호가 틀렸습니다.");
+        //                }
+        //            }
+        //            else {
+        //                Response.Add("res", "false");
+        //                Response.Add("result", "존재하지 않는 아이디 입니다.");
+        //            }
+        //            break;
 
-                case "register":
-                    if(!userInfo.ContainsKey(readJson["id"].ToString())) {  // 아이디 중복체크
-                        userInfo.Add(readJson["id"].ToString(), readJson["pw"].ToString());
-                        Response.Add("res", "true");
-                    } else {
-                        Response.Add("res", "false");
-                        Response.Add("result", "존재하는 아이디 입니다.");
-                    }
-                    break;
-                case "list":
-                    foreach (var client in connectedClients.Keys)
-                    {
-                        Console.WriteLine(client);
-                    }
-                    break;
-            }
+        //        case "register":
+        //            if(!userInfo.ContainsKey(readJson["id"].ToString())) {  // 아이디 중복체크
+        //                userInfo.Add(readJson["id"].ToString(), readJson["pw"].ToString());
+        //                Response.Add("res", "true");
+        //            } else {
+        //                Response.Add("res", "false");
+        //                Response.Add("result", "존재하는 아이디 입니다.");
+        //            }
+        //            break;
+        //        case "list":
+        //            foreach (var client in connectedClients.Keys)
+        //            {
+        //                Console.WriteLine(client);
+        //            }
+        //            break;
+        //    }
 
-            byte[] responseData = Encoding.UTF8.GetBytes(Response.ToString());
-            Console.WriteLine(string.Format("{0} : {1}", DateTime.Now, Response));
-            obj.WorkingSocket.Send(responseData);
-            obj.ClearBuffer();
-            obj.WorkingSocket.BeginReceive(obj.Buffer, 0, 4096, 0, DataReceived, obj);
-        }
+        //    byte[] responseData = Encoding.UTF8.GetBytes(Response.ToString());
+        //    Console.WriteLine(string.Format("{0} : {1}", DateTime.Now, Response));
+        //    obj.WorkingSocket.Send(responseData);
+        //    obj.ClearBuffer();
+        //    obj.WorkingSocket.BeginReceive(obj.Buffer, 0, 4096, 0, DataReceived, obj);
+        //}
 
         static void Main(string[] args)
         {
