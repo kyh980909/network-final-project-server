@@ -131,6 +131,7 @@ namespace network_final_project_server
                         break;
 
                     case "logout":
+                        Console.WriteLine(connectedClients[readJson["id"].ToString()]);
                         connectedClients.Remove(readJson["id"].ToString());
                         break;
                     case "list":
@@ -173,10 +174,6 @@ namespace network_final_project_server
                         }
 
                     }
-                    //Response.Add("result", onlineList);
-                    //obj.WorkingSocket.Send(responseData);
-                    //obj.ClearBuffer();
-                    //obj.WorkingSocket.BeginReceive(obj.Buffer, 0, 4096, 0, DataReceived, obj);
                 }
                 else
                 {
@@ -185,82 +182,12 @@ namespace network_final_project_server
                     obj.ClearBuffer();
                     obj.WorkingSocket.BeginReceive(obj.Buffer, 0, 4096, 0, DataReceived, obj);
                 }
-                //auth(data, obj);
-
-                //for (int i = connectedClients.Count - 1; i >= 0; i--)
-                //{
-                //    Socket socket = connectedClients[i];
-                //    if (socket != obj.WorkingSocket)
-                //    {
-                //        try
-                //        {
-                //            socket.Send(obj.Buffer);
-                //        }
-                //        catch
-                //        {
-                //            try { socket.Dispose(); } catch { }
-                //            connectedClients.RemoveAt(i);
-                //        }
-                //    }
-                //}
-                //obj.WorkingSocket.Send(obj.Buffer);
-                //obj.ClearBuffer();
-                //obj.WorkingSocket.BeginReceive(obj.Buffer, 0, 4096, 0, DataReceived, obj);
             }
             catch
             {
                 Console.WriteLine(string.Format("{0} : 클라이언트 연결 종료", DateTime.Now));
             }
         }
-
-        //public static void auth(string data, AsyncObject obj)
-        //{
-        //    Console.WriteLine("auth");
-        //    var Response = new JObject(); // 반환할 데이터를 담을 객체
-        //    var readJson = JObject.Parse(data); // 받은 json 데이터 파싱
-        //    string req = readJson["req"].ToString();
-        //    Console.WriteLine(string.Format("{0} : {1}", DateTime.Now, readJson));
-        //    switch (req)
-        //    {
-        //        case "login":
-        //            if (userInfo.ContainsKey(readJson["id"].ToString())) { // 아이디 존재 여부 체크
-        //                if(userInfo[readJson["id"].ToString()] == readJson["pw"].ToString()) { // 아이디와 비밀번호가 맞는지 체크
-        //                    connectedClients.Add(readJson["id"].ToString(), obj.WorkingSocket);   // 로그인 성공한 유저의 아이디와 소켓을 딕셔너리에 저장
-        //                    Response.Add("res", "true");
-        //                } else {
-        //                    Response.Add("res", "false");
-        //                    Response.Add("result", "비밀번호가 틀렸습니다.");
-        //                }
-        //            }
-        //            else {
-        //                Response.Add("res", "false");
-        //                Response.Add("result", "존재하지 않는 아이디 입니다.");
-        //            }
-        //            break;
-
-        //        case "register":
-        //            if(!userInfo.ContainsKey(readJson["id"].ToString())) {  // 아이디 중복체크
-        //                userInfo.Add(readJson["id"].ToString(), readJson["pw"].ToString());
-        //                Response.Add("res", "true");
-        //            } else {
-        //                Response.Add("res", "false");
-        //                Response.Add("result", "존재하는 아이디 입니다.");
-        //            }
-        //            break;
-        //        case "list":
-        //            foreach (var client in connectedClients.Keys)
-        //            {
-        //                Console.WriteLine(client);
-        //            }
-        //            break;
-        //    }
-
-        //    byte[] responseData = Encoding.UTF8.GetBytes(Response.ToString());
-        //    Console.WriteLine(string.Format("{0} : {1}", DateTime.Now, Response));
-        //    obj.WorkingSocket.Send(responseData);
-        //    obj.ClearBuffer();
-        //    obj.WorkingSocket.BeginReceive(obj.Buffer, 0, 4096, 0, DataReceived, obj);
-        //}
 
         static void Main(string[] args)
         {
